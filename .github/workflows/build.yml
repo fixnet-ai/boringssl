@@ -36,9 +36,9 @@ jobs:
     steps:
       - name: Install Zig ${{ env.ZIG_VERSION }}
         run: |
-          curl -sSfL "https://ziglang.org/download/$ZIG_VERSION/zig-linux-x86_64-$ZIG_VERSION.tar.xz" -o zig.tar.xz
+          curl -sSfL "https://ziglang.org/download/$ZIG_VERSION/zig-x86_64-linux-$ZIG_VERSION.tar.xz" -o zig.tar.xz
           tar xf zig.tar.xz
-          echo "$PWD/zig-linux-x86_64-$ZIG_VERSION" >> $GITHUB_PATH
+          echo "$PWD/zig-x86_64-linux-$ZIG_VERSION" >> $GITHUB_PATH
 
       - name: Install Ninja
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build

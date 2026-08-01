@@ -64,6 +64,7 @@ jobs:
           ZIG="$(which zig)"
           export CC="$ZIG cc -target ${{ matrix.zig-target }}"
           export CXX="$ZIG c++ -target ${{ matrix.zig-target }}"
+          export CCAS="$ZIG cc -target ${{ matrix.zig-target }}"
           cmake -B build -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=OFF \
@@ -71,7 +72,8 @@ jobs:
             -DCMAKE_SYSTEM_NAME=${{ matrix.cmake-system }} \
             -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cmake-processor }} \
             -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
-            -DCMAKE_INSTALL_NAME_TOOL=/usr/local/bin/install_name_tool
+            -DCMAKE_INSTALL_NAME_TOOL=/usr/local/bin/install_name_tool \
+            -DARCH=aarch64
         working-directory: boringssl
 
       - name: Build ssl + crypto

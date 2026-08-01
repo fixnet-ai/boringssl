@@ -54,6 +54,11 @@ jobs:
           git fetch --depth 1 $BORINGSSL_REPO $BORINGSSL_COMMIT
           git checkout FETCH_HEAD
 
+      - name: Setup cross-compilation tools
+        run: |
+          # macOS 交叉编译需要 install_name_tool（仅静态库不需要，创建 dummy）
+          sudo ln -sf /usr/bin/true /usr/local/bin/install_name_tool 2>/dev/null || true
+
       - name: Configure
         run: |
           ZIG="$(which zig)"
@@ -66,9 +71,7 @@ jobs:
             -DCMAKE_SYSTEM_NAME=${{ matrix.cmake-system }} \
             -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cmake-processor }} \
             -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
-            -DCMAKE_AR="$ZIG;ar" \
-            -DCMAKE_RANLIB="$ZIG;ranlib" \
-            -DCMAKE_INSTALL_NAME_TOOL=/usr/bin/true
+            -DCMAKE_INSTALL_NAME_TOOL=/usr/local/bin/install_name_tool
         working-directory: boringssl
 
       - name: Build ssl + crypto

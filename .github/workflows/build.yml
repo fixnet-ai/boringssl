@@ -17,27 +17,24 @@ env:
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
+    name: Build ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: macos-aarch64
+          - name: macos-aarch64
             zig-target: aarch64-macos-none
-            cmake-system: Darwin
-            cmake-processor: aarch64
-          - target: linux-aarch64
+          - name: linux-aarch64
             zig-target: aarch64-linux-musl
-            cmake-system: Linux
-            cmake-processor: aarch64
-          - target: windows-aarch64
+          - name: windows-aarch64
             zig-target: aarch64-windows-gnu
-            cmake-system: Windows
-            cmake-processor: ARM64
 
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Install Zig ${{ env.ZIG_VERSION }}
         run: |
           curl -sSfL "https://ziglang.org/download/$ZIG_VERSION/zig-x86_64-linux-$ZIG_VERSION.tar.xz" -o zig.tar.xz
@@ -47,54 +44,33 @@ jobs:
       - name: Install Ninja
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
 
-      - name: Clone BoringSSL
+      - name: Clone BoringSSL source
         run: |
-          git init boringssl
-          cd boringssl
+          rm -rf src
+          git init src
+          cd src
           git fetch --depth 1 $BORINGSSL_REPO $BORINGSSL_COMMIT
           git checkout FETCH_HEAD
 
-      - name: Setup cross-compilation tools
-        run: |
-          # macOS 交叉编译需要 install_name_tool（仅静态库不需要，创建 dummy）
-          sudo ln -sf /usr/bin/true /usr/local/bin/install_name_tool 2>/dev/null || true
-
-      - name: Configure
-        run: |
-          ZIG="$(which zig)"
-          export CC="$ZIG cc -target ${{ matrix.zig-target }}"
-          export CXX="$ZIG c++ -target ${{ matrix.zig-target }}"
-          export CCAS="$ZIG cc -target ${{ matrix.zig-target }}"
-          cmake -B build -GNinja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_SYSTEM_NAME=${{ matrix.cmake-system }} \
-            -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cmake-processor }} \
-            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
-            -DCMAKE_INSTALL_NAME_TOOL=/usr/local/bin/install_name_tool \
-            -DARCH=aarch64
-        working-directory: boringssl
-
-      - name: Build ssl + crypto
-        run: cmake --build build --target ssl crypto --config Release
-        working-directory: boringssl
+      - name: Build with zig build
+        run: zig build -Dtarget=${{ matrix.zig-target }}
 
       - name: Package artifacts
         run: |
           set -e
-          DIST="boringssl-${{ matrix.target }}"
+          TARGET_DIR="zig-out/${{ matrix.zig-target }}"
+          DIST="boringssl-${{ matrix.name }}"
           mkdir -p "$DIST/lib" "$DIST/include"
-          cp -R boringssl/include/openssl "$DIST/include/"
-          cp boringssl/build/ssl/libssl.a "$DIST/lib/"
-          cp boringssl/build/crypto/libcrypto.a "$DIST/lib/"
+          cp "$TARGET_DIR/lib/libssl.a" "$DIST/lib/"
+          cp "$TARGET_DIR/lib/libcrypto.a" "$DIST/lib/"
+          cp -R "$TARGET_DIR/include/openssl" "$DIST/include/"
           tar czf "$DIST.tar.gz" "$DIST"
           echo "ARCHIVE=$DIST.tar.gz" >> $GITHUB_ENV
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: boringssl-${{ matrix.target }}
+          name: boringssl-${{ matrix.name }}
           path: ${{ env.ARCHIVE }}
           retention-days: 90
 

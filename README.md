@@ -2,7 +2,7 @@
 
 为 zigbox 全平台编译提供预构建的 BoringSSL 静态库。
 
-三平台统一通过 `zig cc` 交叉编译，产物 ABI 完全一致。
+三平台统一通过 `zig cc` 交叉编译，使用 `build.zig` 驱动 cmake + ninja 构建。
 
 ## 支持平台
 
@@ -11,6 +11,20 @@
 | `macos-aarch64` | `aarch64-macos-none` | `libssl.a` + `libcrypto.a` |
 | `linux-aarch64` | `aarch64-linux-musl` | `libssl.a` + `libcrypto.a` |
 | `windows-aarch64` | `aarch64-windows-gnu` | `libssl.a` + `libcrypto.a` |
+
+## 本地构建
+
+```bash
+# 克隆 BoringSSL 源码到 src/
+git clone --depth 1 https://github.com/google/boringssl.git src
+
+# 构建指定平台
+zig build -Dtarget=aarch64-linux-musl   # Linux
+zig build -Dtarget=aarch64-macos-none   # macOS
+zig build -Dtarget=aarch64-windows-gnu  # Windows
+
+# 产物在 zig-out/<target>/lib/ 和 zig-out/<target>/include/
+```
 
 ## 使用方式
 
@@ -27,16 +41,12 @@ tar xzf boringssl-linux-aarch64.tar.gz
 boringssl-linux-aarch64/
 ├── include/
 │   └── openssl/    ← 头文件
-│       ├── ssl.h
-│       ├── ...
 └── lib/
     ├── libssl.a
     └── libcrypto.a
 ```
 
 ### 在 zigbox 中使用
-
-下载对应平台的库，然后在 `build.zig` 中链接：
 
 ```zig
 zigbox.root_module.addIncludePath(b.path("deps/boringssl/include"));
@@ -52,7 +62,7 @@ zigbox.root_module.addObjectFile(b.path("deps/boringssl/lib/libcrypto.a"));
 
 ## BoringSSL 版本
 
-BoringSSL 源码来自 [boringssl.googlesource.com](https://boringssl.googlesource.com/boringssl)，
+源码来自 [google/boringssl](https://github.com/google/boringssl)，
 commit 在 `.github/workflows/build.yml` 的 `BORINGSSL_COMMIT` 中指定。
 
 更新版本：修改该 commit hash 后 push 即可触发全平台重新构建。

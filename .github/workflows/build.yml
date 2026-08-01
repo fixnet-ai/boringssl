@@ -48,10 +48,10 @@ jobs:
 
       - name: Clone BoringSSL
         run: |
-          git clone --depth 1 $BORINGSSL_REPO boringssl
+          git init boringssl
           cd boringssl
-          git fetch --depth 1 origin $BORINGSSL_COMMIT
-          git checkout $BORINGSSL_COMMIT
+          git fetch --depth 1 $BORINGSSL_REPO $BORINGSSL_COMMIT
+          git checkout FETCH_HEAD
 
       - name: Configure
         run: |
@@ -63,8 +63,6 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=OFF \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_C_COMPILER="$CC" \
-            -DCMAKE_CXX_COMPILER="$CXX" \
             -DCMAKE_AR="$AR" \
             -DCMAKE_RANLIB="$RANLIB"
         working-directory: boringssl

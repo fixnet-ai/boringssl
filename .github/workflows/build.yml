@@ -12,7 +12,7 @@ on:
 
 env:
   BORINGSSL_REPO: https://github.com/google/boringssl.git
-  BORINGSSL_COMMIT: 1a5078d0c953bcc5f9b2eab3a23ffd5ecb2bfe8e
+  BORINGSSL_COMMIT: 1a5078d343ba5d9501062caf11e3173fc364dc59
   ZIG_VERSION: 0.16.0
 
 jobs:

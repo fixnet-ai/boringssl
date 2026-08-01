@@ -1,0 +1,163 @@
+name: Build BoringSSL
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version tag (e.g. v1.0.0)"
+        required: false
+        default: ""
+
+# BoringSSL 源码 commit（master 分支）
+# 更新此 commit 后 push 即可触发所有平台重新构建
+env:
+  BORINGSSL_REPO: https://boringssl.googlesource.com/boringssl
+  BORINGSSL_COMMIT: 1a5078d0c953bcc5f9b2eab3a23ffd5ecb2bfe8e
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS aarch64 — 原生 Apple Silicon runner
+          - target: macos-aarch64
+            runs-on: macos-latest
+            cmake-args: ""
+          # Linux aarch64 — 原生 ARM64 runner (glibc)
+          # 编译产物为 aarch64 目标代码，Zig musl 链接器可直接使用
+          - target: linux-aarch64
+            runs-on: ubuntu-24.04-arm
+            cmake-args: ""
+          # Windows aarch64 — x86_64 runner 使用 MSVC ARM64 交叉编译
+          - target: windows-aarch64
+            runs-on: windows-latest
+            cmake-args: -A ARM64
+
+    runs-on: ${{ matrix.runs-on }}
+
+    steps:
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Install Ninja (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
+
+      - name: Install Ninja (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja -y
+
+      - name: Clone BoringSSL
+        run: |
+          git clone --depth 1 ${{ env.BORINGSSL_REPO }} boringssl
+          cd boringssl
+          git fetch --depth 1 origin ${{ env.BORINGSSL_COMMIT }}
+          git checkout ${{ env.BORINGSSL_COMMIT }}
+
+      - name: Configure (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          cmake -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            ${{ matrix.cmake-args }}
+        working-directory: boringssl
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cmake -B build -GNinja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_SHARED_LIBS=OFF `
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON `
+            ${{ matrix.cmake-args }}
+        working-directory: boringssl
+
+      - name: Build ssl + crypto
+        run: cmake --build build --target ssl crypto --config Release
+        working-directory: boringssl
+
+      - name: Package artifacts
+        shell: bash
+        run: |
+          set -e
+          DIST="boringssl-${{ matrix.target }}"
+          mkdir -p "$DIST/lib" "$DIST/include"
+          cp -R boringssl/include/openssl "$DIST/include/"
+          # BoringSSL 静态库位置因平台而异
+          if [ -f boringssl/build/ssl/libssl.a ]; then
+            cp boringssl/build/ssl/libssl.a "$DIST/lib/"
+            cp boringssl/build/crypto/libcrypto.a "$DIST/lib/"
+          elif [ -f boringssl/build/ssl/Release/ssl.lib ]; then
+            # Windows MSVC 产物
+            cp boringssl/build/ssl/Release/ssl.lib "$DIST/lib/"
+            cp boringssl/build/crypto/Release/crypto.lib "$DIST/lib/"
+          else
+            # 搜索产物位置
+            find boringssl/build -name "libssl.*" -o -name "ssl.lib" | head -5
+            find boringssl/build -name "libcrypto.*" -o -name "crypto.lib" | head -5
+            echo "ERROR: cannot find build artifacts"
+            exit 1
+          fi
+          # 打包
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "$DIST.zip" "$DIST"
+            echo "ARCHIVE=$DIST.zip" >> $GITHUB_ENV
+          else
+            tar czf "$DIST.tar.gz" "$DIST"
+            echo "ARCHIVE=$DIST.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: boringssl-${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
+          retention-days: 90
+
+  release:
+    name: Create Release
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: ${{ github.event.inputs.version }}
+          body: |
+            BoringSSL prebuilt static libraries.
+
+            **Source commit:** `${{ env.BORINGSSL_COMMIT }}`
+
+            | Platform | Archive |
+            |----------|---------|
+            | macOS aarch64 | `boringssl-macos-aarch64.tar.gz` |
+            | Linux aarch64 | `boringssl-linux-aarch64.tar.gz` |
+            | Windows aarch64 | `boringssl-windows-aarch64.zip` |
+
+            ### Usage
+
+            ```bash
+            # Download
+            curl -LO "https://github.com/fixnet-ai/boringssl/releases/download/$VERSION/boringssl-linux-aarch64.tar.gz"
+            tar xzf boringssl-linux-aarch64.tar.gz
+            # → boringssl-linux-aarch64/{include/openssl/*.h, lib/libssl.a, lib/libcrypto.a}
+            ```
+          files: artifacts/*/*
+          draft: false
+          prerelease: false

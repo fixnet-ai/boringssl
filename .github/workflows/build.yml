@@ -24,13 +24,17 @@ jobs:
         include:
           - target: macos-aarch64
             zig-target: aarch64-macos-none
+            cmake-system: Darwin
+            cmake-processor: aarch64
           - target: linux-aarch64
             zig-target: aarch64-linux-musl
+            cmake-system: Linux
+            cmake-processor: aarch64
           - target: windows-aarch64
             zig-target: aarch64-windows-gnu
+            cmake-system: Windows
+            cmake-processor: ARM64
 
-    # 三平台统一在 ubuntu-latest (x86_64) 上通过 zig cc 交叉编译
-    # 编译器完全一致，消除平台差异
     runs-on: ubuntu-latest
 
     steps:
@@ -42,9 +46,6 @@ jobs:
 
       - name: Install Ninja
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
-
-      - name: Check Zig version
-        run: zig version
 
       - name: Clone BoringSSL
         run: |
@@ -63,6 +64,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=OFF \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_SYSTEM_NAME=${{ matrix.cmake-system }} \
+            -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cmake-processor }} \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
             -DCMAKE_AR="$AR" \
             -DCMAKE_RANLIB="$RANLIB"
         working-directory: boringssl
@@ -108,7 +112,7 @@ jobs:
           tag_name: ${{ github.event.inputs.version }}
           name: ${{ github.event.inputs.version }}
           body: |
-            BoringSSL prebuilt static libraries (zig cc cross-compilation).
+            BoringSSL prebuilt static libraries (zig cc cross-compilation, Zig ${{ env.ZIG_VERSION }}).
 
             **Source commit:** `${{ env.BORINGSSL_COMMIT }}`
 

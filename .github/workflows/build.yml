@@ -11,7 +11,7 @@ on:
         default: ""
 
 env:
-  BORINGSSL_REPO: https://boringssl.googlesource.com/boringssl
+  BORINGSSL_REPO: https://github.com/google/boringssl.git
   BORINGSSL_COMMIT: 1a5078d0c953bcc5f9b2eab3a23ffd5ecb2bfe8e
   ZIG_VERSION: 0.16.0
 

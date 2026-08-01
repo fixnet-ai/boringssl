@@ -10,11 +10,10 @@ on:
         required: false
         default: ""
 
-# BoringSSL 源码 commit（master 分支）
-# 更新此 commit 后 push 即可触发所有平台重新构建
 env:
   BORINGSSL_REPO: https://boringssl.googlesource.com/boringssl
   BORINGSSL_COMMIT: 1a5078d0c953bcc5f9b2eab3a23ffd5ecb2bfe8e
+  ZIG_VERSION: 0.16.0
 
 jobs:
   build:
@@ -23,60 +22,51 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS aarch64 — 原生 Apple Silicon runner
           - target: macos-aarch64
-            runs-on: macos-latest
-            cmake-args: ""
-          # Linux aarch64 — 原生 ARM64 runner (glibc)
-          # 编译产物为 aarch64 目标代码，Zig musl 链接器可直接使用
+            zig-target: aarch64-macos-none
           - target: linux-aarch64
-            runs-on: ubuntu-24.04-arm
-            cmake-args: ""
-          # Windows aarch64 — x86_64 runner 使用 MSVC ARM64 交叉编译
+            zig-target: aarch64-linux-musl
           - target: windows-aarch64
-            runs-on: windows-latest
-            cmake-args: -A ARM64
+            zig-target: aarch64-windows-gnu
 
-    runs-on: ${{ matrix.runs-on }}
+    # 三平台统一在 ubuntu-latest (x86_64) 上通过 zig cc 交叉编译
+    # 编译器完全一致，消除平台差异
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Install Ninja (macOS)
-        if: runner.os == 'macOS'
-        run: brew install ninja
+      - name: Install Zig ${{ env.ZIG_VERSION }}
+        run: |
+          curl -sSfL "https://ziglang.org/download/$ZIG_VERSION/zig-linux-x86_64-$ZIG_VERSION.tar.xz" -o zig.tar.xz
+          tar xf zig.tar.xz
+          echo "$PWD/zig-linux-x86_64-$ZIG_VERSION" >> $GITHUB_PATH
 
-      - name: Install Ninja (Linux)
-        if: runner.os == 'Linux'
+      - name: Install Ninja
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
 
-      - name: Install Ninja (Windows)
-        if: runner.os == 'Windows'
-        run: choco install ninja -y
+      - name: Check Zig version
+        run: zig version
 
       - name: Clone BoringSSL
         run: |
-          git clone --depth 1 ${{ env.BORINGSSL_REPO }} boringssl
+          git clone --depth 1 $BORINGSSL_REPO boringssl
           cd boringssl
-          git fetch --depth 1 origin ${{ env.BORINGSSL_COMMIT }}
-          git checkout ${{ env.BORINGSSL_COMMIT }}
+          git fetch --depth 1 origin $BORINGSSL_COMMIT
+          git checkout $BORINGSSL_COMMIT
 
-      - name: Configure (macOS / Linux)
-        if: runner.os != 'Windows'
+      - name: Configure
         run: |
+          export CC="zig cc -target ${{ matrix.zig-target }}"
+          export CXX="zig c++ -target ${{ matrix.zig-target }}"
+          export AR="zig ar"
+          export RANLIB="zig ranlib"
           cmake -B build -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=OFF \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            ${{ matrix.cmake-args }}
-        working-directory: boringssl
-
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          cmake -B build -GNinja `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DBUILD_SHARED_LIBS=OFF `
-            -DCMAKE_POSITION_INDEPENDENT_CODE=ON `
-            ${{ matrix.cmake-args }}
+            -DCMAKE_C_COMPILER="$CC" \
+            -DCMAKE_CXX_COMPILER="$CXX" \
+            -DCMAKE_AR="$AR" \
+            -DCMAKE_RANLIB="$RANLIB"
         working-directory: boringssl
 
       - name: Build ssl + crypto
@@ -84,35 +74,15 @@ jobs:
         working-directory: boringssl
 
       - name: Package artifacts
-        shell: bash
         run: |
           set -e
           DIST="boringssl-${{ matrix.target }}"
           mkdir -p "$DIST/lib" "$DIST/include"
           cp -R boringssl/include/openssl "$DIST/include/"
-          # BoringSSL 静态库位置因平台而异
-          if [ -f boringssl/build/ssl/libssl.a ]; then
-            cp boringssl/build/ssl/libssl.a "$DIST/lib/"
-            cp boringssl/build/crypto/libcrypto.a "$DIST/lib/"
-          elif [ -f boringssl/build/ssl/Release/ssl.lib ]; then
-            # Windows MSVC 产物
-            cp boringssl/build/ssl/Release/ssl.lib "$DIST/lib/"
-            cp boringssl/build/crypto/Release/crypto.lib "$DIST/lib/"
-          else
-            # 搜索产物位置
-            find boringssl/build -name "libssl.*" -o -name "ssl.lib" | head -5
-            find boringssl/build -name "libcrypto.*" -o -name "crypto.lib" | head -5
-            echo "ERROR: cannot find build artifacts"
-            exit 1
-          fi
-          # 打包
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            7z a "$DIST.zip" "$DIST"
-            echo "ARCHIVE=$DIST.zip" >> $GITHUB_ENV
-          else
-            tar czf "$DIST.tar.gz" "$DIST"
-            echo "ARCHIVE=$DIST.tar.gz" >> $GITHUB_ENV
-          fi
+          cp boringssl/build/ssl/libssl.a "$DIST/lib/"
+          cp boringssl/build/crypto/libcrypto.a "$DIST/lib/"
+          tar czf "$DIST.tar.gz" "$DIST"
+          echo "ARCHIVE=$DIST.tar.gz" >> $GITHUB_ENV
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -140,7 +110,7 @@ jobs:
           tag_name: ${{ github.event.inputs.version }}
           name: ${{ github.event.inputs.version }}
           body: |
-            BoringSSL prebuilt static libraries.
+            BoringSSL prebuilt static libraries (zig cc cross-compilation).
 
             **Source commit:** `${{ env.BORINGSSL_COMMIT }}`
 
@@ -148,12 +118,11 @@ jobs:
             |----------|---------|
             | macOS aarch64 | `boringssl-macos-aarch64.tar.gz` |
             | Linux aarch64 | `boringssl-linux-aarch64.tar.gz` |
-            | Windows aarch64 | `boringssl-windows-aarch64.zip` |
+            | Windows aarch64 | `boringssl-windows-aarch64.tar.gz` |
 
             ### Usage
 
             ```bash
-            # Download
             curl -LO "https://github.com/fixnet-ai/boringssl/releases/download/$VERSION/boringssl-linux-aarch64.tar.gz"
             tar xzf boringssl-linux-aarch64.tar.gz
             # → boringssl-linux-aarch64/{include/openssl/*.h, lib/libssl.a, lib/libcrypto.a}

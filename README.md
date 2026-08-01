@@ -2,15 +2,15 @@
 
 为 zigbox 全平台编译提供预构建的 BoringSSL 静态库。
 
-GitHub Actions 自动构建，解除开发机本地编译 BoringSSL 的负担。
+三平台统一通过 `zig cc` 交叉编译，产物 ABI 完全一致。
 
 ## 支持平台
 
-| 目标 | 产物 |
-|------|------|
-| `macos-aarch64` | `libssl.a` + `libcrypto.a` (Mach-O) |
-| `linux-aarch64` | `libssl.a` + `libcrypto.a` (ELF) |
-| `windows-aarch64` | `ssl.lib` + `crypto.lib` (PE/COFF) |
+| 目标 | zig cc target | 产物 |
+|------|--------------|------|
+| `macos-aarch64` | `aarch64-macos-none` | `libssl.a` + `libcrypto.a` |
+| `linux-aarch64` | `aarch64-linux-musl` | `libssl.a` + `libcrypto.a` |
+| `windows-aarch64` | `aarch64-windows-gnu` | `libssl.a` + `libcrypto.a` |
 
 ## 使用方式
 

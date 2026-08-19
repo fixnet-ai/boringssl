@@ -232,6 +232,20 @@ bool ssl_add_client_hello(SSL_HANDSHAKE *hs) {
     return false;
   }
 
+  // ShadowTLS v3 legacy session_id rewrite hook: mutate the serialized
+  // ClientHello before it is transmitted and before it enters the
+  // transcript, so TLS 1.3 Finished verification stays consistent with the
+  // peer's view of the handshake bytes. The internal legacy_session_id is
+  // re-synced from the rewritten bytes so the ServerHello echo check in
+  // tls13_client.cc (RFC 8446 section 4.1.3) still passes.
+  if (ssl->client_hello_sid_rewrite_cb != nullptr) {
+    ssl->client_hello_sid_rewrite_cb(ssl, msg.data(), msg.size());
+    if (msg.size() > 71 && msg[0] == SSL3_MT_CLIENT_HELLO &&
+        msg[38] == SSL_MAX_SSL_SESSION_ID_LENGTH) {
+      hs->session_id.CopyFrom(Span(msg).subspan(39, 32));
+    }
+  }
+
   return ssl->method->add_message(ssl, std::move(msg));
 }
 

@@ -3282,6 +3282,11 @@ void SSL_CTX_set_permute_extensions(SSL_CTX *ctx, int enabled) {
   FromOpaque(ctx)->permute_extensions = !!enabled;
 }
 
+void SSL_set_client_hello_sid_rewrite_callback(
+    SSL *ssl, void (*cb)(SSL *ssl, uint8_t *msg, size_t len)) {
+  FromOpaque(ssl)->client_hello_sid_rewrite_cb = cb;
+}
+
 void SSL_set_permute_extensions(SSL *ssl, int enabled) {
   auto *ssl_impl = FromOpaque(ssl);
   if (!ssl_impl->config) {

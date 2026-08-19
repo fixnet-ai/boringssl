@@ -4272,6 +4272,16 @@ class SSLImpl : public ssl_st {
                        void *arg) = nullptr;
   void *msg_callback_arg = nullptr;
 
+  // client_hello_sid_rewrite_cb, if non-null, is invoked on the fully
+  // serialized ClientHello handshake message (handshake header + body,
+  // before record framing and before the message enters the transcript).
+  // The callback may rewrite bytes in place (ShadowTLS v3 injects an HMAC
+  // into the legacy session_id this way). Both the wire bytes and the
+  // transcript see the rewritten message, keeping TLS 1.3 Finished
+  // verification consistent with the peer.
+  void (*client_hello_sid_rewrite_cb)(SSL *ssl, uint8_t *msg, size_t len) =
+      nullptr;
+
   // session info
 
   // initial_timeout_duration_ms is the default DTLS timeout duration in

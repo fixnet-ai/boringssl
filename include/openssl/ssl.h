@@ -5579,6 +5579,15 @@ OPENSSL_EXPORT void SSL_set_permute_extensions(SSL *ssl, int enabled);
 OPENSSL_EXPORT void SSL_set_client_hello_sid_rewrite_callback(
     SSL *ssl, void (*cb)(SSL *ssl, uint8_t *msg, size_t len));
 
+// SSL_get_client_x25519_private_key writes the 32-byte X25519 ECDHE private
+// key of the ClientHello key_share to |out_key|. It returns 1 on success and
+// 0 if the handshake has not set up an X25519 key share (e.g. no handshake in
+// progress, or only non-X25519 groups offered). Valid within the
+// client_hello_sid_rewrite_callback; used by REALITY clients to derive the
+// auth key embedded in the legacy session_id.
+OPENSSL_EXPORT int SSL_get_client_x25519_private_key(SSL *ssl,
+                                                     uint8_t out_key[32]);
+
 // SSL_max_seal_overhead returns the maximum overhead, in bytes, of sealing a
 // record with `ssl`.
 OPENSSL_EXPORT size_t SSL_max_seal_overhead(const SSL *ssl);

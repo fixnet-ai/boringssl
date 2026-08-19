@@ -3287,6 +3287,37 @@ void SSL_set_client_hello_sid_rewrite_callback(
   FromOpaque(ssl)->client_hello_sid_rewrite_cb = cb;
 }
 
+// REALITY client support: export the X25519 ECDHE private key of the
+// key_share offered in the ClientHello. The key exists from
+// ssl_setup_key_shares until the key exchange completes, so it is valid
+// inside the client_hello_sid_rewrite_callback (which fires on the fully
+// serialized ClientHello, before transmission and before the transcript).
+int SSL_get_client_x25519_private_key(SSL *ssl, uint8_t out_key[32]) {
+  SSLImpl *ssl_impl = FromOpaque(ssl);
+  if (ssl_impl->s3 == nullptr || ssl_impl->s3->hs == nullptr) {
+    return 0;
+  }
+  SSL_HANDSHAKE *hs = ssl_impl->s3->hs.get();
+  for (const UniquePtr<SSLKeyShare> &share : hs->key_shares) {
+    if (share && share->GroupID() == SSL_GROUP_X25519) {
+      ScopedCBB cbb;
+      if (!CBB_init(cbb.get(), 32) ||  //
+          !share->SerializePrivateKey(cbb.get())) {
+        return 0;
+      }
+      CBS cbs;
+      CBB_flush(cbb.get());
+      CBS_init(&cbs, CBB_data(cbb.get()), CBB_len(cbb.get()));
+      if (CBS_len(&cbs) != 32 ||  //
+          !CBS_copy_bytes(&cbs, out_key, 32)) {
+        return 0;
+      }
+      return 1;
+    }
+  }
+  return 0;
+}
+
 void SSL_set_permute_extensions(SSL *ssl, int enabled) {
   auto *ssl_impl = FromOpaque(ssl);
   if (!ssl_impl->config) {
